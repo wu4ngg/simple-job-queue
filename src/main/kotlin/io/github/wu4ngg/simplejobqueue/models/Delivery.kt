@@ -7,5 +7,4 @@ enum class DeliveryStatus {
     SUCCEEDED,
     DEAD
 }
-data class Delivery (val id: String, val endpointId: String, val payload: String, val status: DeliveryStatus = DeliveryStatus.PENDING, val attempts: Int = 0, val nextAttemptAt: Instant, val lastError: String? = null, val createdAt: Instant) {
-}
+data class Delivery (val id: String, val endpointId: String, val payload: String, val status: DeliveryStatus = DeliveryStatus.PENDING, val attempts: Int = 0, val nextAttemptAt: Instant, val lastError: String? = null, val createdAt: Instant)
