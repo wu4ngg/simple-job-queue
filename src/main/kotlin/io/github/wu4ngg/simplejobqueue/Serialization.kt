@@ -1,4 +1,4 @@
-package com.example
+package io.github.wu4ngg.simplejobqueue
 
 import io.ktor.server.application.*
 import io.ktor.serialization.kotlinx.json.*

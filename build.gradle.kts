@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-group = "com.example"
+group = "io.github.wu4ngg"
 version = "1.0.0-SNAPSHOT"
 
 application {

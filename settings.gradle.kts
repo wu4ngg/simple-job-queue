@@ -17,5 +17,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ktor-sample"
+rootProject.name = "simple-job-queue"
 
