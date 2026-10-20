@@ -1,3 +1,5 @@
 package io.github.wu4ngg.simplejobqueue.exceptions
 
-class ValidationException(message: String) : RuntimeException(message)
+import io.ktor.http.HttpStatusCode
+
+class ValidationException(message: String) : ApiException(HttpStatusCode.BadRequest, message)

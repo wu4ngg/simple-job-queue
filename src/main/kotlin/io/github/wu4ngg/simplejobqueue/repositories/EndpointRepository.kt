@@ -16,18 +16,14 @@ class InMemoryEndpointRepository : EndpointRepository {
     private val endpoints = ConcurrentHashMap<String, Endpoint>()
     private val random = SecureRandom()
     override suspend fun create(url: String): Endpoint {
-        // random
-        // uuid
         val id = UUID.randomUUID().toString()
-        // secret
+        // 32 bytes = 256-bit HMAC-SHA256 Secret key.
         val bytes = ByteArray(32)
         random.nextBytes(bytes)
         val secretRaw =
             Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
         val secret = Secret("jq_$secretRaw")
-        // endpoint creation
         val endpoint = Endpoint(id, url, secret)
-        // add to data
         endpoints[id] = endpoint
         return endpoint
     }
