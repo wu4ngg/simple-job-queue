@@ -4,6 +4,7 @@ import io.github.wu4ngg.simplejobqueue.exceptions.ApiException
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.NotFoundException
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.request.uri
@@ -35,6 +36,14 @@ fun Application.configureStatusPages() {
             call.respondText(
                 text = cause.message!!,
                 status = cause.statusCode,
+            )
+        }
+
+        exception<ContentTransformationException> { call, cause ->
+            call.application.log.debug("Unsupported Media Type. Uri: ${call.request.uri}", cause)
+            call.respondText(
+                text = "Unsupported Media Type",
+                status = HttpStatusCode.UnsupportedMediaType,
             )
         }
     }

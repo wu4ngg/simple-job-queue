@@ -1,7 +1,6 @@
 package io.github.wu4ngg.simplejobqueue.dtos
 
 import io.github.wu4ngg.simplejobqueue.models.Endpoint
-import io.github.wu4ngg.simplejobqueue.models.Secret
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -9,6 +8,9 @@ data class CreateEndpointResponse(val id: String, val url: String, val secret: S
 
 @Serializable
 data class GetEndpointResponse(val id: String, val url: String)
+
+@Serializable
+data class CreateEndpointRequest(val url: String? = null)
 
 fun Endpoint.toCreatedResponse(): CreateEndpointResponse {
     return CreateEndpointResponse(id = this.id, url = this.url, secret = this.secret.value)
