@@ -5,14 +5,25 @@ import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
 class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : DeliveryQueue {
     private val deliveries = mutableMapOf<String, Delivery>()
 
-    // block concurrent modification/access to deliveries
+
+    // block concurrent modification/access to deliveries (shared state)
     private val mutex = Mutex()
+
+    // caller must hold mutex
+    private fun requireInflight(id: String): Delivery {
+        val delivery = deliveries[id]
+        checkNotNull(delivery) { "Delivery not found: $id" }
+        check(delivery.status == DeliveryStatus.IN_FLIGHT) { "Invalid delivery status: $id" }
+        return delivery
+    }
+
     override suspend fun enqueue(endpointId: String, payload: String): Delivery {
         val id: String = UUID.randomUUID().toString()
         val now = Instant.now(clock)
@@ -44,12 +55,25 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         }
     }
 
-    override suspend fun markSucceeded(id: String) {
-        TODO("Not yet implemented")
+    override suspend fun markSucceeded(id: String) = mutex.withLock {
+        val delivery = requireInflight(id)
+        val nextAttempt = delivery.attempts + 1
+        val nextStatus = DeliveryStatus.SUCCEEDED
+        val newDelivery = delivery.copy(status = nextStatus, attempts = nextAttempt)
+        deliveries[id] = newDelivery
     }
 
-    override suspend fun markFailed(id: String, error: String) {
-        TODO("Not yet implemented")
+    override suspend fun markFailed(id: String, error: String) = mutex.withLock {
+        val now = Instant.now(clock)
+        val delivery = requireInflight(id)
+        val nextAttempt = delivery.attempts + 1
+        val nextStatus = if (nextAttempt >= MAX_ATTEMPTS) DeliveryStatus.DEAD else DeliveryStatus.PENDING
+        val nextSeconds = 1L shl nextAttempt
+        val nextAttemptAt = now.plus(Duration.ofSeconds(nextSeconds))
+        val newDelivery =
+            delivery.copy(status = nextStatus, nextAttemptAt = nextAttemptAt, attempts = nextAttempt, lastError = error)
+        deliveries[id] = newDelivery
+
     }
 
     override suspend fun find(id: String): Delivery? = mutex.withLock {
@@ -64,5 +88,9 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
             return list.filter { it.status == status }
         }
         return list
+    }
+
+    companion object {
+        const val MAX_ATTEMPTS = 5
     }
 }
