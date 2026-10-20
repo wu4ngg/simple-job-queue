@@ -3,13 +3,28 @@ package io.github.wu4ngg.simplejobqueue.queue
 import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Clock
+import java.time.Instant
+import java.util.UUID
 
 class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : DeliveryQueue {
     private val deliveries = mutableMapOf<String, Delivery>()
     private val mutex = Mutex()
     override suspend fun enqueue(endpointId: String, payload: String): Delivery {
-        TODO()
+        val id: String = UUID.randomUUID().toString()
+        val now = Instant.now(clock)
+        val delivery = Delivery(
+            id = id,
+            endpointId = endpointId,
+            payload = payload,
+            nextAttemptAt = now,
+            createdAt = now,
+        )
+        mutex.withLock {
+            deliveries[id] = delivery
+        }
+        return delivery
     }
 
     override suspend fun claimNext(): Delivery? {
@@ -24,11 +39,17 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         TODO("Not yet implemented")
     }
 
-    override suspend fun find(id: String): Delivery? {
-        TODO("Not yet implemented")
+    override suspend fun find(id: String): Delivery? = mutex.withLock {
+        return deliveries[id]
     }
 
     override suspend fun list(status: DeliveryStatus?): List<Delivery> {
-        TODO("Not yet implemented")
+        val list = mutex.withLock {
+            deliveries.values.toList()
+        }
+        if (status != null) {
+            return list.filter { it.status == status }
+        }
+        return list
     }
 }
