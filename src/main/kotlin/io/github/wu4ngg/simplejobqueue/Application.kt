@@ -2,8 +2,8 @@ package io.github.wu4ngg.simplejobqueue
 
 import io.github.wu4ngg.simplejobqueue.repositories.EndpointRepository
 import io.github.wu4ngg.simplejobqueue.repositories.InMemoryEndpointRepository
-import io.github.wu4ngg.simplejobqueue.workers.DeliveryQueue
-import io.github.wu4ngg.simplejobqueue.workers.InMemoryDeliveryQueue
+import io.github.wu4ngg.simplejobqueue.queue.DeliveryQueue
+import io.github.wu4ngg.simplejobqueue.queue.InMemoryDeliveryQueue
 import io.ktor.server.application.Application
 
 fun Application.module() {

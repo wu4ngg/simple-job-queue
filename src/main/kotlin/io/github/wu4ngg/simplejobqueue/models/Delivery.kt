@@ -4,10 +4,12 @@ import java.time.Instant
 
 enum class DeliveryStatus {
     PENDING,
+    IN_FLIGHT,
     SUCCEEDED,
-    DEAD
+    DEAD,
 }
-data class Delivery (
+
+data class Delivery(
     val id: String,
     val endpointId: String,
     val payload: String,
