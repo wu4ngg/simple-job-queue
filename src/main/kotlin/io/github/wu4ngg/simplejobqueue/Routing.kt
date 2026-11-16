@@ -5,6 +5,7 @@ import io.github.wu4ngg.simplejobqueue.dtos.CreateEndpointResponse
 import io.github.wu4ngg.simplejobqueue.dtos.GetEndpointResponse
 import io.github.wu4ngg.simplejobqueue.dtos.toCreatedResponse
 import io.github.wu4ngg.simplejobqueue.dtos.toResponse
+import io.github.wu4ngg.simplejobqueue.etc.testReceiver
 import io.github.wu4ngg.simplejobqueue.exceptions.ResourceNotFoundException
 import io.github.wu4ngg.simplejobqueue.exceptions.ValidationException
 import io.github.wu4ngg.simplejobqueue.repositories.EndpointRepository
@@ -20,11 +21,12 @@ import java.net.URI
 import java.net.URISyntaxException
 
 fun Application.configureRouting(endpoints: EndpointRepository, queue: DeliveryQueue) {
+    val failRate = environment.config.property("testReceiver.flakyReceiverFailureRate")
+        .getString().toDouble()
     routing {
         get("/") {
             call.respondText("Hello, World!")
         }
-
         post("/endpoints") {
             val request = call.receive<CreateEndpointRequest>()
             val rawUrl = request.url
@@ -50,11 +52,13 @@ fun Application.configureRouting(endpoints: EndpointRepository, queue: DeliveryQ
             val endpoint = endpoints.create(rawUrl)
             call.respond<CreateEndpointResponse>(HttpStatusCode.Created, endpoint.toCreatedResponse())
         }
-
         get("/endpoints/{id}") {
             val id = call.parameters.getOrFail("id")
             val endpoint = endpoints.get(id) ?: throw ResourceNotFoundException("Endpoint: $id not found!")
             call.respond<GetEndpointResponse>(endpoint.toResponse())
         }
+        testReceiver(
+            failRate = failRate
+        )
     }
 }
