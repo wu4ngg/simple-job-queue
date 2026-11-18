@@ -19,3 +19,4 @@ data class Delivery(
     val lastError: String? = null,
     val createdAt: Instant
 )
+
