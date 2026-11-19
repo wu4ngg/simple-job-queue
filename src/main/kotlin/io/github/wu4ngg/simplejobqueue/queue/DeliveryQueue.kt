@@ -9,5 +9,11 @@ interface DeliveryQueue {
     suspend fun markSucceeded(id: String)
     suspend fun markFailed(id: String, error: String)
     suspend fun find(id: String): Delivery?
+
+    /**
+     * Returns a list of deliveries ordered by [Delivery.createdAt], newest first.
+     *
+     * @param status only returns deliveries in this status. `null` returns all
+     */
     suspend fun list(status: DeliveryStatus? = null): List<Delivery>
 }

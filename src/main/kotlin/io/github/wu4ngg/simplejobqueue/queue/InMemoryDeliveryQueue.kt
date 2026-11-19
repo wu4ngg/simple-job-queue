@@ -80,14 +80,14 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         return deliveries[id]
     }
 
+
     override suspend fun list(status: DeliveryStatus?): List<Delivery> {
         val list = mutex.withLock {
             deliveries.values.toList()
         }
-        if (status != null) {
-            return list.filter { it.status == status }
-        }
         return list
+            .filter { status == null || it.status == status }
+            .sortedByDescending { it.createdAt }
     }
 
     companion object {

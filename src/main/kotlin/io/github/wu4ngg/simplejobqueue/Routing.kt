@@ -14,6 +14,7 @@ import io.github.wu4ngg.simplejobqueue.exceptions.ResourceNotFoundException
 import io.github.wu4ngg.simplejobqueue.exceptions.ValidationException
 import io.github.wu4ngg.simplejobqueue.repositories.EndpointRepository
 import io.github.wu4ngg.simplejobqueue.queue.DeliveryQueue
+import io.github.wu4ngg.simplejobqueue.routes.deliveryRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.contentLength
@@ -94,6 +95,8 @@ fun Application.configureRouting(endpoints: EndpointRepository, queue: DeliveryQ
             val endpoint = endpoints.get(id) ?: throw ResourceNotFoundException("Endpoint: $id not found!")
             call.respond<GetEndpointResponse>(endpoint.toResponse())
         }
+
+        deliveryRoutes(queue)
 
         testReceiver(
             failRate = failRate
