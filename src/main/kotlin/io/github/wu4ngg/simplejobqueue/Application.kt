@@ -1,5 +1,6 @@
 package io.github.wu4ngg.simplejobqueue
 
+import io.github.wu4ngg.simplejobqueue.db.configureDatabase
 import io.github.wu4ngg.simplejobqueue.queue.DeliveryQueue
 import io.github.wu4ngg.simplejobqueue.queue.InMemoryDeliveryQueue
 import io.github.wu4ngg.simplejobqueue.repositories.EndpointRepository
@@ -27,6 +28,7 @@ fun Application.module() {
     configureMonitoring()
     configureSerialization()
     configureStatusPages()
+    configureDatabase()
     configureRouting(endpoints, queue)
     val worker = DeliveryWorker(
         queue = queue,

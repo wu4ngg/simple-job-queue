@@ -49,20 +49,26 @@ class DeliveryWorker(
     }
 
     suspend fun run(idleDelay: Duration) {
+        log.info("Starting job $idleDelay")
         var willDelay: Boolean
-        while (currentCoroutineContext().isActive) {
-            try {
-                val process = processNext()
-                willDelay = !process
-            } catch (ex: CancellationException) {
-                throw ex
-            } catch (ex: Exception) {
-                log.error("Exception occurred while processing delivery", ex)
-                willDelay = true
+        try {
+            while (currentCoroutineContext().isActive) {
+                try {
+                    val process = processNext()
+                    willDelay = !process
+                } catch (ex: CancellationException) {
+                    throw ex
+                } catch (ex: Exception) {
+                    log.error("Exception occurred while processing delivery", ex)
+                    willDelay = true
+                }
+                if (willDelay) {
+                    delay(idleDelay)
+                }
             }
-            if (willDelay) {
-                delay(idleDelay)
-            }
+        } finally {
+            log.info("Ending job $idleDelay")
         }
+
     }
 }

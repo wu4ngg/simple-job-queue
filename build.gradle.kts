@@ -24,6 +24,11 @@ dependencies {
     implementation(libs.logback.classic)
     implementation(ktorLibs.client.core)
     implementation(ktorLibs.client.cio)
+    implementation(libs.hikari)
+    implementation(libs.flyway.core)
+    implementation(libs.flyway.postgresql)
+    runtimeOnly(libs.postgresql)
+
 
     testImplementation(kotlin("test"))
     testImplementation(ktorLibs.server.testHost)
