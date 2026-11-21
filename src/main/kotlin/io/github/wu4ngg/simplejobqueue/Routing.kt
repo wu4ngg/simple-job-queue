@@ -28,6 +28,15 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.net.URI
 import java.net.URISyntaxException
+import java.util.UUID
+
+fun parseUUID(uuid: String): UUID {
+    try {
+        return UUID.fromString(uuid)
+    } catch (ex: IllegalArgumentException) {
+        throw ApiBadRequestException("Invalid UUID")
+    }
+}
 
 fun Application.configureRouting(endpoints: EndpointRepository, queue: DeliveryQueue) {
     val failRate = environment.config.property("testReceiver.flakyReceiverFailureRate")
@@ -38,6 +47,7 @@ fun Application.configureRouting(endpoints: EndpointRepository, queue: DeliveryQ
         }
         post("/endpoints/{id}/events") {
             val endpointId = call.parameters.getOrFail("id")
+            parseUUID(endpointId)
             val endpoint = endpoints.get(endpointId) ?: throw ResourceNotFoundException("Endpoint not found")
             val maxPayloadBytes = MAX_PAYLOAD_BYTES
             val reqLength = call.request.contentLength() ?: 0
@@ -92,7 +102,9 @@ fun Application.configureRouting(endpoints: EndpointRepository, queue: DeliveryQ
 
         get("/endpoints/{id}") {
             val id = call.parameters.getOrFail("id")
-            val endpoint = endpoints.get(id) ?: throw ResourceNotFoundException("Endpoint: $id not found!")
+            val uuidId = parseUUID(id)
+            val endpoint =
+                endpoints.get(uuidId.toString()) ?: throw ResourceNotFoundException("Endpoint: $id not found!")
             call.respond<GetEndpointResponse>(endpoint.toResponse())
         }
 

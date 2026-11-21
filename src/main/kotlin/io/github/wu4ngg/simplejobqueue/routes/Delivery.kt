@@ -7,6 +7,7 @@ import io.github.wu4ngg.simplejobqueue.dtos.toResponse
 import io.github.wu4ngg.simplejobqueue.exceptions.ResourceNotFoundException
 import io.github.wu4ngg.simplejobqueue.exceptions.ValidationException
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
+import io.github.wu4ngg.simplejobqueue.parseUUID
 import io.github.wu4ngg.simplejobqueue.queue.DeliveryQueue
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -32,6 +33,7 @@ fun Route.deliveryRoutes(queue: DeliveryQueue) {
 
     get("/deliveries/{id}") {
         val id = call.parameters.getOrFail("id")
+        parseUUID(id)
         val delivery = queue.find(id) ?: throw ResourceNotFoundException("Delivery with id $id not found")
         call.respond<DeliveryResponse>(delivery.toResponse())
     }
