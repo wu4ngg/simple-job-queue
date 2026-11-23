@@ -60,7 +60,24 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
     }
 
     override suspend fun claimNext(): Delivery? {
-        TODO("Not yet implemented")
+        val sql = """
+            UPDATE deliveries SET status = '${DeliveryStatus.IN_FLIGHT.toCode()}' WHERE id = (
+                SELECT id FROM deliveries
+                WHERE status = '${DeliveryStatus.PENDING.toCode()}' AND next_attempt_at <= now()
+                ORDER BY next_attempt_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            ) RETURNING $DELIVERY_COLUMNS
+        """.trimIndent()
+        return ds.withConnection { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.executeQuery().use { rs ->
+                    if (rs.next()) {
+                        rs.toDelivery()
+                    } else null
+                }
+            }
+        }
     }
 
     override suspend fun markSucceeded(id: String) {
@@ -74,7 +91,7 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
     override suspend fun find(id: String): Delivery? {
         val uuid = UUID.fromString(id)
         val sql = """
-            SELECT $DELIVERY_COLUMNS FROM deliveries WHERE id = ?;
+            SELECT $DELIVERY_COLUMNS FROM deliveries WHERE id = ?
         """.trimIndent()
         return ds.withConnection { conn ->
             conn.prepareStatement(sql).use { ps ->
