@@ -2,6 +2,8 @@ package io.github.wu4ngg.simplejobqueue.models
 
 import java.time.Instant
 
+const val MAX_ATTEMPTS = 5
+
 enum class DeliveryStatus {
 
     PENDING,

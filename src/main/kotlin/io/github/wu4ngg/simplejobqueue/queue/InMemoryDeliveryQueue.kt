@@ -2,6 +2,7 @@ package io.github.wu4ngg.simplejobqueue.queue
 
 import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
+import io.github.wu4ngg.simplejobqueue.models.MAX_ATTEMPTS
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Clock
@@ -88,9 +89,5 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         return list
             .filter { status == null || it.status == status }
             .sortedByDescending { it.createdAt }
-    }
-
-    companion object {
-        const val MAX_ATTEMPTS = 5
     }
 }

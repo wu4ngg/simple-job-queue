@@ -4,6 +4,7 @@ import io.github.wu4ngg.simplejobqueue.db.withConnection
 import io.github.wu4ngg.simplejobqueue.endpoints.EndpointNotFoundException
 import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
+import io.github.wu4ngg.simplejobqueue.models.MAX_ATTEMPTS
 import io.github.wu4ngg.simplejobqueue.models.toCode
 import java.sql.ResultSet
 import java.sql.SQLException
@@ -81,11 +82,43 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
     }
 
     override suspend fun markSucceeded(id: String) {
-        TODO("Not yet implemented")
+        val uuid = UUID.fromString(id)
+        val sql = """
+            UPDATE deliveries
+            SET status = '${DeliveryStatus.SUCCEEDED.toCode()}', attempts = attempts + 1
+            WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ?
+        """.trimIndent()
+        val updated = ds.withConnection { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.setObject(1, uuid)
+                ps.executeUpdate()
+            }
+        }
+        check(updated == 1) { "Delivery '$id' is not inflight" }
     }
 
     override suspend fun markFailed(id: String, error: String) {
-        TODO("Not yet implemented")
+        val uuid = UUID.fromString(id)
+        val sql = """
+            UPDATE deliveries
+            SET attempts        = attempts + 1,
+                status          = CASE WHEN attempts + 1 >= ?
+                                  THEN '${DeliveryStatus.DEAD.toCode()}'
+                                  ELSE '${DeliveryStatus.PENDING.toCode()}'
+                                  END,
+                next_attempt_at = now() + make_interval(secs => power(2, attempts + 1)),
+                last_error      = ?
+            WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ?
+        """.trimIndent()
+        val updated = ds.withConnection { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.setInt(1, MAX_ATTEMPTS)
+                ps.setString(2, error)
+                ps.setObject(3, uuid)
+                ps.executeUpdate()
+            }
+        }
+        check(updated == 1) { "Delivery '$id' is not inflight" }
     }
 
     override suspend fun find(id: String): Delivery? {
@@ -127,5 +160,4 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
             }
         }
     }
-
 }
