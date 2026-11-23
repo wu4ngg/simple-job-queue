@@ -2,7 +2,7 @@ package io.github.wu4ngg.simplejobqueue.routes
 
 import io.github.wu4ngg.simplejobqueue.dtos.ApiListResponse
 import io.github.wu4ngg.simplejobqueue.dtos.DeliveryResponse
-import io.github.wu4ngg.simplejobqueue.dtos.toApi
+import io.github.wu4ngg.simplejobqueue.models.toCode
 import io.github.wu4ngg.simplejobqueue.dtos.toResponse
 import io.github.wu4ngg.simplejobqueue.exceptions.ResourceNotFoundException
 import io.github.wu4ngg.simplejobqueue.exceptions.ValidationException
@@ -18,10 +18,8 @@ fun Route.deliveryRoutes(queue: DeliveryQueue) {
     get("/deliveries") {
         val queryParam = call.request.queryParameters["status"]
         val status = if (queryParam != null) {
-            val status = DeliveryStatus.entries.find { it.toApi() == queryParam.lowercase() }
-            if (status == null) {
-                throw ValidationException("Invalid status $queryParam, valid statuses are: ${DeliveryStatus.entries.joinToString { it.toApi() }}")
-            }
+            val status = DeliveryStatus.fromCode(queryParam.lowercase())
+                ?: throw ValidationException("Invalid status $queryParam, valid statuses are: ${DeliveryStatus.entries.joinToString { it.toCode() }}")
             status
         } else {
             null

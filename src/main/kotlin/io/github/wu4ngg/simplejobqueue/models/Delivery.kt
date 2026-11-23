@@ -3,10 +3,15 @@ package io.github.wu4ngg.simplejobqueue.models
 import java.time.Instant
 
 enum class DeliveryStatus {
+
     PENDING,
     IN_FLIGHT,
     SUCCEEDED,
-    DEAD,
+    DEAD;
+
+    companion object {
+        fun fromCode(raw: String): DeliveryStatus? = entries.find { it.toCode() == raw }
+    }
 }
 
 data class Delivery(
@@ -20,3 +25,13 @@ data class Delivery(
     val createdAt: Instant
 )
 
+/**
+ * Wire and storage code. Also persisted in `deliveries.status` and its CHECK constraint:
+ * changing a value need a migration
+ */
+fun DeliveryStatus.toCode(): String = when (this) {
+    DeliveryStatus.DEAD -> "dead"
+    DeliveryStatus.IN_FLIGHT -> "inflight"
+    DeliveryStatus.SUCCEEDED -> "succeeded"
+    DeliveryStatus.PENDING -> "pending"
+}

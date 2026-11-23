@@ -1,9 +1,8 @@
 package io.github.wu4ngg.simplejobqueue.dtos
 
 import io.github.wu4ngg.simplejobqueue.models.Delivery
-import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
+import io.github.wu4ngg.simplejobqueue.models.toCode
 import kotlinx.serialization.Serializable
-import java.time.Instant
 
 @Serializable
 data class EnqueueEventResponse(val deliveryId: String) {
@@ -20,18 +19,11 @@ data class DeliveryResponse(
     val createdAt: String,
 )
 
-fun DeliveryStatus.toApi(): String = when (this) {
-    DeliveryStatus.DEAD -> "dead"
-    DeliveryStatus.IN_FLIGHT -> "inflight"
-    DeliveryStatus.SUCCEEDED -> "succeeded"
-    DeliveryStatus.PENDING -> "pending"
-}
-
 fun Delivery.toResponse(): DeliveryResponse {
     return DeliveryResponse(
         id = this.id,
         endpointId = this.endpointId,
-        status = this.status.toApi(),
+        status = this.status.toCode(),
         attempts = this.attempts,
         nextAttemptAt = this.nextAttemptAt.toString(),
         lastError = this.lastError,
