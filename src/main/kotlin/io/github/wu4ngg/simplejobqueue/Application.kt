@@ -6,6 +6,7 @@ import io.github.wu4ngg.simplejobqueue.queue.InMemoryDeliveryQueue
 import io.github.wu4ngg.simplejobqueue.repositories.EndpointRepository
 import io.github.wu4ngg.simplejobqueue.endpoints.InMemoryEndpointRepository
 import io.github.wu4ngg.simplejobqueue.endpoints.PostgresEndpointRepository
+import io.github.wu4ngg.simplejobqueue.queue.PostgresDeliveryQueue
 import io.github.wu4ngg.simplejobqueue.worker.DeliveryWorker
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -17,7 +18,7 @@ import kotlin.time.Duration.Companion.milliseconds
 fun Application.module() {
     val ds = configureDatabase()
     val endpoints: EndpointRepository = PostgresEndpointRepository(ds)
-    val queue: DeliveryQueue = InMemoryDeliveryQueue()
+    val queue: DeliveryQueue = PostgresDeliveryQueue(ds)
     val client = HttpClient(CIO) {
         install(HttpTimeout) {
             requestTimeoutMillis = 10_000

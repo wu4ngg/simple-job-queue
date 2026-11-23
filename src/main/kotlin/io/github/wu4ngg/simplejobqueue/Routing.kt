@@ -7,6 +7,7 @@ import io.github.wu4ngg.simplejobqueue.dtos.EnqueueEventResponse
 import io.github.wu4ngg.simplejobqueue.dtos.GetEndpointResponse
 import io.github.wu4ngg.simplejobqueue.dtos.toCreatedResponse
 import io.github.wu4ngg.simplejobqueue.dtos.toResponse
+import io.github.wu4ngg.simplejobqueue.endpoints.EndpointNotFoundException
 import io.github.wu4ngg.simplejobqueue.etc.testReceiver
 import io.github.wu4ngg.simplejobqueue.exceptions.ApiBadRequestException
 import io.github.wu4ngg.simplejobqueue.exceptions.ApiPayloadTooLargeException
@@ -70,7 +71,11 @@ fun Application.configureRouting(endpoints: EndpointRepository, queue: DeliveryQ
             } catch (_: SerializationException) {
                 throw ApiBadRequestException("Body is invalid (not a JSON)")
             }
-            val delivery = queue.enqueue(endpoint.id, payload)
+            val delivery = try {
+                queue.enqueue(endpoint.id, payload)
+            } catch (_: EndpointNotFoundException) {
+                throw ResourceNotFoundException("Endpoint '$endpointId' not found")
+            }
             val response = EnqueueEventResponse(deliveryId = delivery.id)
             call.respond<EnqueueEventResponse>(HttpStatusCode.Accepted, response)
         }
