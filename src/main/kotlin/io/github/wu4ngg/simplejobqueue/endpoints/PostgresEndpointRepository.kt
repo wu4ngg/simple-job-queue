@@ -1,20 +1,15 @@
 package io.github.wu4ngg.simplejobqueue.endpoints
 
+import io.github.wu4ngg.simplejobqueue.db.withConnection
 import io.github.wu4ngg.simplejobqueue.models.Endpoint
 import io.github.wu4ngg.simplejobqueue.models.Secret
 import io.github.wu4ngg.simplejobqueue.repositories.EndpointRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.sql.Connection
 import java.sql.ResultSet
 import java.util.UUID
 import javax.sql.DataSource
 
 
-class PostgresEndpointRepository(val ds: DataSource) : EndpointRepository {
-    private suspend fun <T> withConnection(block: (Connection) -> T): T =
-        withContext(Dispatchers.IO) { ds.connection.use(block) }
-
+class PostgresEndpointRepository(private val ds: DataSource) : EndpointRepository {
     private fun ResultSet.toEndpoint() = Endpoint(
         id = getObject("id", UUID::class.java).toString(),
         url = getString("url"),
@@ -29,7 +24,7 @@ class PostgresEndpointRepository(val ds: DataSource) : EndpointRepository {
                 ?, ?, ?
             )
         """.trimIndent()
-        val res = withConnection { connection ->
+        ds.withConnection { connection ->
             connection.prepareStatement(insertSQL).use { st ->
                 st.setObject(1, uuid)
                 st.setString(2, url)
@@ -46,7 +41,7 @@ class PostgresEndpointRepository(val ds: DataSource) : EndpointRepository {
             FROM endpoints
             WHERE id = ?
         """.trimIndent()
-        val res = withConnection { connection ->
+        val res = ds.withConnection { connection ->
             connection.prepareStatement(getSQL).use { ps ->
                 ps.setObject(1, UUID.fromString(id))
                 ps.executeQuery().use { rs ->
