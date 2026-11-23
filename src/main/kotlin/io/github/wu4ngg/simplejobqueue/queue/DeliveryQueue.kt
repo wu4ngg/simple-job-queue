@@ -8,6 +8,10 @@ interface DeliveryQueue {
     suspend fun claimNext(): Delivery?
     suspend fun markSucceeded(id: String)
     suspend fun markFailed(id: String, error: String)
+
+    /**
+     * id must be a valid UUID; implementations may throw otherwise
+     */
     suspend fun find(id: String): Delivery?
 
     /**
