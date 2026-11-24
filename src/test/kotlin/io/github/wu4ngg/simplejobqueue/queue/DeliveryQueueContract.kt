@@ -108,7 +108,7 @@ abstract class DeliveryQueueContract {
     }
 
     @Test
-    fun `DEAD after 5 attempts`(): Unit = runBlocking {
+    fun `becomes DEAD after MAX_ATTEMPTS failures`(): Unit = runBlocking {
         val endpoint = createEndpoint()
         val delivery = queue.enqueue(endpoint, "{}")
         assertEquals(DeliveryStatus.PENDING, delivery.status)
@@ -145,17 +145,21 @@ abstract class DeliveryQueueContract {
     }
 
     @Test
-    fun `list returns correct filter`(): Unit = runBlocking {
+    fun `list filters by status`(): Unit = runBlocking {
         val endpoint = createEndpoint()
-        queue.enqueue(endpoint, """{"1": 1}""")
-        queue.enqueue(endpoint, """{"2": 2}""")
-        queue.enqueue(endpoint, """{"3": 3}""")
-        queue.claimNext()
+        val d1 = queue.enqueue(endpoint, """{"1": 1}""")
+        val d2 = queue.enqueue(endpoint, """{"2": 2}""")
+        val d3 = queue.enqueue(endpoint, """{"3": 3}""")
+        val claimed = queue.claimNext()
+        assertNotNull(claimed)
         val list = queue.list()
         val pendingList = queue.list(DeliveryStatus.PENDING)
         val inFlightList = queue.list(DeliveryStatus.IN_FLIGHT)
-        assertEquals(3, list.size, "Total list count must be 3")
-        assertEquals(2, pendingList.size, "Pending list count must be 2")
-        assertEquals(1, inFlightList.size, "In flight list count must be 1")
+        assertEquals(setOf(d1.id, d2.id, d3.id), list.map { it.id }.toSet())
+        assertEquals(
+            setOf(d1.id, d2.id, d3.id) - claimed.id,
+            pendingList.map { it.id }.toSet(),
+        )
+        assertEquals(listOf(claimed.id), inFlightList.map { it.id })
     }
 }
