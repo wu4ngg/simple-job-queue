@@ -9,6 +9,10 @@ import io.ktor.server.application.log
 import org.flywaydb.core.Flyway
 import javax.sql.DataSource
 
+fun migrate(ds: DataSource) {
+    Flyway.configure().dataSource(ds).load().migrate()
+}
+
 fun Application.configureDatabase(): DataSource {
     val db = environment.config.config("database")
     val dbUrl = db.property("url").getString()
@@ -28,7 +32,7 @@ fun Application.configureDatabase(): DataSource {
     }
     val ds = HikariDataSource(hikariConfig)
     try {
-        Flyway.configure().dataSource(ds).load().migrate()
+        migrate(ds)
     } catch (ex: Exception) {
         ds.close()
         throw ex
