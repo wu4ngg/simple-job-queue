@@ -88,6 +88,7 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         }
         return list
             .filter { status == null || it.status == status }
-            .sortedByDescending { it.createdAt }
+            .sortedWith(compareByDescending<Delivery> { it.createdAt }.thenByDescending { it.id })
+
     }
 }
