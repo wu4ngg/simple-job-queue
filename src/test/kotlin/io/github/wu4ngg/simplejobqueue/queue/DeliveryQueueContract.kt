@@ -1,6 +1,8 @@
 package io.github.wu4ngg.simplejobqueue.queue
 
+import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
+import io.github.wu4ngg.simplejobqueue.models.MAX_ATTEMPTS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -103,5 +105,57 @@ abstract class DeliveryQueueContract {
         advanceTime(Duration.ofSeconds(1))
         val claimed2s = queue.claimNext()
         assertEquals(claimed.id, claimed2s?.id)
+    }
+
+    @Test
+    fun `DEAD after 5 attempts`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        val delivery = queue.enqueue(endpoint, "{}")
+        assertEquals(DeliveryStatus.PENDING, delivery.status)
+        assertEquals(0, delivery.attempts)
+        repeat(MAX_ATTEMPTS) {
+            val deliveryClaimNext = queue.claimNext()
+            assertNotNull(deliveryClaimNext, "Expected delivery after claimNext")
+            assertEquals(delivery.id, deliveryClaimNext.id)
+            assertEquals(DeliveryStatus.IN_FLIGHT, deliveryClaimNext.status)
+            queue.markFailed(deliveryClaimNext.id, "HTTP 500 $it")
+            advanceTime(Duration.ofMinutes(1))
+        }
+        val failed = queue.find(delivery.id)
+        assertNotNull(failed)
+        assertEquals(DeliveryStatus.DEAD, failed.status)
+        assertEquals(MAX_ATTEMPTS, failed.attempts)
+        assertEquals("HTTP 500 ${MAX_ATTEMPTS - 1}", failed.lastError)
+        advanceTime(Duration.ofHours(1))
+        val claimNext = queue.claimNext()
+        assertNull(claimNext, "DEAD deliveries are never claimed")
+    }
+
+    @Test
+    fun `list returns newest first`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        val delivery1 = queue.enqueue(endpoint, """{"1": 1}""")
+        advanceTime(Duration.ofSeconds(1))
+        val delivery2 = queue.enqueue(endpoint, """{"2": 2}""")
+        advanceTime(Duration.ofSeconds(1))
+        val delivery3 = queue.enqueue(endpoint, """{"3": 3}""")
+        val list = queue.list()
+        val expected = listOf(delivery3.id, delivery2.id, delivery1.id)
+        assertEquals(expected, list.map { it.id })
+    }
+
+    @Test
+    fun `list returns correct filter`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        queue.enqueue(endpoint, """{"1": 1}""")
+        queue.enqueue(endpoint, """{"2": 2}""")
+        queue.enqueue(endpoint, """{"3": 3}""")
+        queue.claimNext()
+        val list = queue.list()
+        val pendingList = queue.list(DeliveryStatus.PENDING)
+        val inFlightList = queue.list(DeliveryStatus.IN_FLIGHT)
+        assertEquals(3, list.size, "Total list count must be 3")
+        assertEquals(2, pendingList.size, "Pending list count must be 2")
+        assertEquals(1, inFlightList.size, "In flight list count must be 1")
     }
 }
