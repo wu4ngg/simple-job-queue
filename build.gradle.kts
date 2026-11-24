@@ -32,6 +32,7 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(ktorLibs.server.testHost)
+    testImplementation(libs.testcontainers.postgresql)
 }
 tasks.test {
     useJUnitPlatform()
