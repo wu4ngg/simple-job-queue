@@ -5,34 +5,35 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
-import kotlin.test.assertEquals
-import org.junit.jupiter.api.Test
-import java.time.Clock
+import kotlin.test.Test
 import java.time.Duration
 import java.time.Instant
-import java.time.ZoneId
-import java.time.ZoneOffset
+import java.util.UUID
+import kotlin.test.BeforeTest
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class TestClock(var now: Instant) : Clock() {
-    override fun getZone(): ZoneId = ZoneOffset.UTC
-    override fun withZone(zone: ZoneId?): Clock = this
-    override fun instant(): Instant = now
-    fun advance(d: Duration) {
-        now = now.plus(d)
-    }
-}
+abstract class DeliveryQueueContract {
+    protected lateinit var queue: DeliveryQueue
+    abstract fun newQueue(): DeliveryQueue
+    abstract suspend fun createEndpoint(): String
+    abstract fun advanceTime(d: Duration)
+    abstract suspend fun now(): Instant
 
-class InMemoryDeliveryQueueTest {
+    @BeforeTest
+    fun setUpQueue() {
+        queue = newQueue()
+    }
+
     @Test
-    fun `claimNext never claim a delivery twice`(): Unit = runBlocking {
-        val queue = InMemoryDeliveryQueue()
+    fun `claimNext never claims a delivery twice`(): Unit = runBlocking {
+        val endpointId = createEndpoint()
         (1..1000).forEach {
             queue.enqueue(
-                it.toString(),
+                endpointId,
                 """
                         {
                             "payload": "payload$it"
@@ -56,51 +57,50 @@ class InMemoryDeliveryQueueTest {
         assertEquals(1000, uniqueSize)
         val listPending = queue.list(DeliveryStatus.PENDING)
         val listInFlight = queue.list(DeliveryStatus.IN_FLIGHT)
-        assertTrue { listPending.isEmpty() }
+        assertEquals(emptyList(), listPending)
         assertEquals(1000, listInFlight.size)
     }
 
     @Test
     fun `markSucceeded throws on an unclaimed or unknown delivery`(): Unit = runBlocking {
-        val queue = InMemoryDeliveryQueue()
         val del = queue.enqueue(
-            "success",
+            createEndpoint(),
             "{}"
         )
         assertFailsWith<IllegalStateException> {
             queue.markSucceeded(del.id)
         }
         assertFailsWith<IllegalStateException> {
-            queue.markSucceeded("nope")
+            queue.markSucceeded(UUID.randomUUID().toString())
         }
     }
 
     @Test
     fun `claimNext doesn't retry immediately after markFailed`(): Unit = runBlocking {
-        val clock = TestClock(now = Instant.parse("2026-01-01T00:00:00Z"))
-        val queue = InMemoryDeliveryQueue(clock)
         val del = queue.enqueue(
-            "failure",
+            createEndpoint(),
             "{}"
         )
         val claimed = queue.claimNext()
         assertNotNull(claimed)
         assertEquals(del.id, claimed.id)
-        val start = clock.instant()
+        val before = now()
         queue.markFailed(del.id, "HTTP 500")
+        val after = now()
         val failed = queue.find(del.id)
         assertNotNull(failed)
         assertEquals(del.id, failed.id)
         assertEquals(DeliveryStatus.PENDING, failed.status)
         assertEquals(1, failed.attempts)
-        assertEquals(start.plus(Duration.ofSeconds(2)), failed.nextAttemptAt)
+        val range = before.plusSeconds(2)..after.plusSeconds(2)
+        assertTrue(failed.nextAttemptAt in range, "nextAttemptAt=${failed.nextAttemptAt} not in $range")
         assertEquals("HTTP 500", failed.lastError)
         val claimed0s = queue.claimNext()
         assertNull(claimed0s)
-        clock.advance(Duration.ofSeconds(1))
+        advanceTime(Duration.ofSeconds(1))
         val claimed1s = queue.claimNext()
         assertNull(claimed1s)
-        clock.advance(Duration.ofSeconds(1))
+        advanceTime(Duration.ofSeconds(1))
         val claimed2s = queue.claimNext()
         assertEquals(claimed.id, claimed2s?.id)
     }
