@@ -3,6 +3,7 @@ package io.github.wu4ngg.simplejobqueue.worker
 import io.github.wu4ngg.simplejobqueue.queue.DeliveryQueue
 import io.github.wu4ngg.simplejobqueue.repositories.EndpointRepository
 import io.ktor.client.HttpClient
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -20,10 +21,13 @@ class DeliveryWorker(
     private val queue: DeliveryQueue,
     private val endpoints: EndpointRepository,
     private val client: HttpClient,
+    private val instanceId: String,
 ) {
     private val log = LoggerFactory.getLogger(DeliveryWorker::class.java)
     suspend fun processNext(): Boolean {
         val delivery = queue.claimNext() ?: return false
+        val attemptCount = delivery.attempts + 1
+        log.info("worker ${instanceId.take(8)} --> claiming ${delivery.endpointId}: (id: ${delivery.id}, attempt #${attemptCount})")
         val endpoint = endpoints.get(delivery.endpointId)
         if (endpoint == null) {
             queue.markFailed(delivery.id, "Endpoint not found")
@@ -33,6 +37,8 @@ class DeliveryWorker(
             client.post(endpoint.url) {
                 contentType(ContentType.Application.Json)
                 setBody(delivery.payload)
+                header("X-Delivery-Id", delivery.id)
+                header("X-Delivery-Attempt", attemptCount)
             }
         } catch (ex: CancellationException) {
             throw ex
@@ -49,7 +55,7 @@ class DeliveryWorker(
     }
 
     suspend fun run(idleDelay: Duration) {
-        log.info("Starting job $idleDelay")
+        log.info("Starting worker ${instanceId.take(8)}")
         var willDelay: Boolean
         try {
             while (currentCoroutineContext().isActive) {
@@ -67,7 +73,7 @@ class DeliveryWorker(
                 }
             }
         } finally {
-            log.info("Ending job $idleDelay")
+            log.info("Ending worker ${instanceId.take(8)}")
         }
 
     }

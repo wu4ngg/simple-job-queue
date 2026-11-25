@@ -13,6 +13,7 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.server.application.*
 import kotlinx.coroutines.launch
+import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 
 fun Application.module() {
@@ -37,6 +38,7 @@ fun Application.module() {
         queue = queue,
         endpoints = endpoints,
         client = client,
+        instanceId = UUID.randomUUID().toString(),
     )
     launch { worker.run(500.milliseconds) }
 }

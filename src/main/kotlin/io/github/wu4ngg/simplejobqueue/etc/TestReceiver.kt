@@ -15,12 +15,14 @@ fun Route.testReceiver(
     require(failRate in 0.0..1.0) { "testReceiver failure rate must be in 0.0..1.0, got $failRate" }
     post("/test-receiver") {
         val roll = random.nextDouble()
-        val body = call.receiveText()
+        call.receiveText()
+        val deliveryIdHeader = call.request.headers["X-Delivery-Id"]
+        val deliveryAttemptHeader = call.request.headers["X-Delivery-Attempt"]
         if (roll > failRate) {
-            call.application.log.info("testReceiver. Body: $body --> 200")
+            call.application.log.info("testReceiver. Status 200. deliveryId $deliveryIdHeader, attempt #$deliveryAttemptHeader")
             call.respond(HttpStatusCode.OK)
         } else {
-            call.application.log.info("testReceiver. Body: $body --> 500")
+            call.application.log.info("testReceiver. Status 500. deliveryId $deliveryIdHeader, attempt #$deliveryAttemptHeader")
             call.respond(HttpStatusCode.InternalServerError)
         }
     }
