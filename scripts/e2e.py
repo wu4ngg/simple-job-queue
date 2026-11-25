@@ -10,8 +10,8 @@ import urllib.request
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8080")
 RECEIVER_URL = os.environ.get("RECEIVER_URL", f"{BASE_URL}/test-receiver")
 HEADERS = {"Content-Type": "application/json"}
-EVENTS_COUNT = 10
-DEADLINE_S = 45
+EVENTS_COUNT = int(os.environ.get("EVENTS_COUNT", "10"))
+DEADLINE_S = int(os.environ.get("DEADLINE_S", "45"))
 POLL_INTERVAL_S = 2
 def create_endpoint():
     print("-------> ENDPOINT <-------")
@@ -78,17 +78,17 @@ def check_invariants(deliveries):
     print(f"[CHECK] -> Correct deliveries count: {correct_deliveries_count}.")
     print(f"[CHECK] -> Success or failed: {is_success_or_dead}.")
     if (not is_success_or_dead):
-        list_filter_others = [i.get("status") != 'succeeded' and i.get("status") != 'dead' for i in deliveries]
+        list_filter_others = [i for i in deliveries if i.get("status") != 'succeeded' and i.get("status") != 'dead']
         print (f"[CHECK] -> Offending entries")
         print_table(list_filter_others)
     print(f"[CHECK] -> Dead deliveries have 5 attempts and HTTP 500 lastError: {dead_five_attempts}.")
     if (not dead_five_attempts):
-        list_filter_others = [i.get("status") == 'dead' and i.get("attempts") > 5 and i.get("lastError") != 'HTTP 500' for i in list_filter_dead]
+        list_filter_others = [i for i in list_filter_dead if i.get("attempts") != 5 or i.get("lastError") != 'HTTP 500']
         print (f"[CHECK] -> Offending entries")
         print_table(list_filter_others)
     print(f"[CHECK] -> Success deliveries have between 1 and 5 attempts: {success_correct_attempts}.")
     if (not success_correct_attempts):
-        list_filter_others = [i.get("status") == 'succeeded' and i.get("attempts") not in range(1,6) for i in list_filter_dead]
+        list_filter_others = [i for i in list_filter_succeeded if i.get("status") == 'succeeded' and i.get("attempts") not in range(1,6)]
         print (f"[CHECK] -> Offending entries")
         print_table(list_filter_others)
     print(f"[CHECK] -> Total attempts == total receiver logs count: Check manually.")
