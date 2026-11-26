@@ -13,13 +13,15 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.server.application.*
 import kotlinx.coroutines.launch
+import java.time.Duration
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 
 fun Application.module() {
     val ds = configureDatabase()
+    val leaseSeconds = environment.config.property("queue.leaseSeconds").getString().toLong()
     val endpoints: EndpointRepository = PostgresEndpointRepository(ds)
-    val queue: DeliveryQueue = PostgresDeliveryQueue(ds)
+    val queue: DeliveryQueue = PostgresDeliveryQueue(ds, Duration.ofSeconds(leaseSeconds))
     val client = HttpClient(CIO) {
         install(HttpTimeout) {
             requestTimeoutMillis = 10_000
@@ -32,7 +34,6 @@ fun Application.module() {
     configureMonitoring()
     configureSerialization()
     configureStatusPages()
-
     configureRouting(endpoints, queue)
     val worker = DeliveryWorker(
         queue = queue,

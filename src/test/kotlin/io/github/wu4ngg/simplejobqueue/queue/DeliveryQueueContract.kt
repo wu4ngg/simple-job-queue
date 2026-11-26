@@ -25,6 +25,7 @@ abstract class DeliveryQueueContract {
     abstract suspend fun createEndpoint(): String
     abstract fun advanceTime(d: Duration)
     abstract suspend fun now(): Instant
+    protected val lease: Duration = Duration.ofSeconds(60)
 
     @BeforeTest
     fun setUpQueue() {
@@ -182,5 +183,56 @@ abstract class DeliveryQueueContract {
         val final = queue.find(delivery.id)
         assertNotNull(final)
         assertEquals(2, final.attempts)
+    }
+
+    @Test
+    fun `reapExpired never reaps not-yet-expired deliveries`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        val delivery = queue.enqueue(endpoint, """{"1": 1}""")
+        val claimed = queue.claimNext()
+        assertNotNull(claimed)
+        assertEquals(delivery.id, claimed.delivery.id)
+        advanceTime(lease - Duration.ofSeconds(1))
+        val rows = queue.reapExpired()
+        assertEquals(0, rows)
+    }
+
+    @Test
+    fun `reapExpired reaps expired deliveries`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        val delivery = queue.enqueue(endpoint, """{"1": 1}""")
+        val claimed = queue.claimNext()
+        assertNotNull(claimed)
+        assertEquals(delivery.id, claimed.delivery.id)
+        advanceTime(lease)
+        val rows = queue.reapExpired()
+        assertEquals(1, rows)
+        val del = queue.find(delivery.id)
+        assertNotNull(del)
+        assertEquals(DeliveryStatus.PENDING, del.status)
+        assertEquals("lease expired", del.lastError)
+        val claimed2 = queue.claimNext()
+        assertNotNull(claimed2)
+        assertEquals(delivery.id, claimed2.delivery.id)
+        assertEquals(2, claimed2.delivery.attempts)
+    }
+
+    @Test
+    fun `reapExpired put delivery status to DEAD after MAX_ATTEMPTS attempts`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        val delivery = queue.enqueue(endpoint, """{"n": "0"}""")
+        repeat (MAX_ATTEMPTS) {
+            val claimed = queue.claimNext()
+            assertNotNull(claimed)
+            advanceTime(lease)
+            val rows = queue.reapExpired()
+            assertEquals(1, rows)
+        }
+        val deliveryFinal = queue.find(delivery.id)
+        assertNotNull(deliveryFinal)
+        assertEquals(MAX_ATTEMPTS, deliveryFinal.attempts)
+        assertEquals(DeliveryStatus.DEAD, deliveryFinal.status)
+        val claimed2 = queue.claimNext()
+        assertNull(claimed2)
     }
 }

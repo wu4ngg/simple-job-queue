@@ -61,6 +61,12 @@ class DeliveryWorker(
             while (currentCoroutineContext().isActive) {
                 try {
                     val process = processNext()
+                    if (!process) {
+                        val rows = queue.reapExpired()
+                        if(rows > 0) {
+                            log.warn("worker ${instanceId.take(8)} --> Reaping $rows inflight deliveries.")
+                        }
+                    }
                     willDelay = !process
                 } catch (ex: CancellationException) {
                     throw ex

@@ -9,6 +9,7 @@ import io.github.wu4ngg.simplejobqueue.models.MAX_ATTEMPTS
 import io.github.wu4ngg.simplejobqueue.models.toCode
 import java.sql.ResultSet
 import java.sql.SQLException
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.util.UUID
 import javax.sql.DataSource
@@ -17,7 +18,7 @@ private const val DELIVERY_COLUMNS =
     "id, endpoint_id, payload, status, attempts, next_attempt_at, last_error, created_at"
 private const val FOREIGN_KEY_VIOLATION = "23503"
 
-class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
+class PostgresDeliveryQueue(private val ds: DataSource, private val lease: Duration) : DeliveryQueue {
     private fun ResultSet.toDelivery() = Delivery(
         id = getObject("id", UUID::class.java).toString(),
         payload = getString("payload"),
@@ -67,7 +68,8 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
             UPDATE deliveries SET 
                 status = '${DeliveryStatus.IN_FLIGHT.toCode()}', 
                 claim_token = ?, 
-                attempts = attempts + 1
+                attempts = attempts + 1,
+                lease_expires_at = now() + make_interval(secs => ?)
             WHERE id = (
                 SELECT id FROM deliveries
                 WHERE status = '${DeliveryStatus.PENDING.toCode()}' AND next_attempt_at <= now()
@@ -79,6 +81,7 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
         val res = ds.withConnection { conn ->
             conn.prepareStatement(sql).use { ps ->
                 ps.setObject(1, claimToken)
+                ps.setDouble(2, lease.toMillis() / 1000.0)
                 ps.executeQuery().use { rs ->
                     if (rs.next()) {
                         rs.toDelivery()
@@ -93,7 +96,9 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
         val uuid = UUID.fromString(claim.delivery.id)
         val sql = """
             UPDATE deliveries
-            SET status = '${DeliveryStatus.SUCCEEDED.toCode()}'
+            SET status           = '${DeliveryStatus.SUCCEEDED.toCode()}',                 
+                claim_token      = NULL,
+                lease_expires_at = NULL
             WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ?
         """.trimIndent()
         val updated = ds.withConnection { conn ->
@@ -109,12 +114,14 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
         val uuid = UUID.fromString(claim.delivery.id)
         val sql = """
             UPDATE deliveries
-            SET status          = CASE WHEN attempts >= ?
-                                  THEN '${DeliveryStatus.DEAD.toCode()}'
-                                  ELSE '${DeliveryStatus.PENDING.toCode()}'
-                                  END,
-                next_attempt_at = now() + make_interval(secs => power(2, attempts)),
-                last_error      = ?
+                SET status       = CASE WHEN attempts >= ?
+                                   THEN '${DeliveryStatus.DEAD.toCode()}'
+                                   ELSE '${DeliveryStatus.PENDING.toCode()}'
+                                   END,
+                next_attempt_at  = now() + make_interval(secs => power(2, attempts)),
+                claim_token      = NULL,
+                lease_expires_at = NULL,
+                last_error       = ?
             WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ?
         """.trimIndent()
         val updated = ds.withConnection { conn ->
@@ -126,6 +133,27 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
             }
         }
         check(updated == 1) { "Delivery '$uuid' is not inflight" }
+    }
+
+    override suspend fun reapExpired(): Int {
+        val sql = """
+            UPDATE deliveries
+            SET status              = CASE WHEN attempts >= ?
+                                      THEN '${DeliveryStatus.DEAD.toCode()}'
+                                      ELSE '${DeliveryStatus.PENDING.toCode()}'
+                                      END,
+                 lease_expires_at   = NULL,
+                 claim_token        = NULL,
+                 last_error         = 'lease expired'
+            WHERE lease_expires_at <= now() AND status = '${DeliveryStatus.IN_FLIGHT.toCode()}'
+        """.trimIndent()
+        val res = ds.withConnection { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.setInt(1, MAX_ATTEMPTS)
+                ps.executeUpdate()
+            }
+        }
+        return res
     }
 
     override suspend fun find(id: String): Delivery? {

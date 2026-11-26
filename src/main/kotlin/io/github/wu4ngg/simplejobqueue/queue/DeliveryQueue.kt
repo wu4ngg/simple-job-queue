@@ -9,7 +9,10 @@ interface DeliveryQueue {
     suspend fun claimNext(): Claim?
     suspend fun markSucceeded(claim: Claim)
     suspend fun markFailed(claim: Claim, error: String)
-
+    /**
+     * Mark inflight deliveries as PENDING/DEAD whose lease are expired and returns row counts of those deliveries
+     */
+    suspend fun reapExpired(): Int
     /**
      * id must be a valid UUID; implementations may throw otherwise
      */

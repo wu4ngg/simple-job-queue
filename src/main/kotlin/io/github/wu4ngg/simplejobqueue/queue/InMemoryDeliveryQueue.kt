@@ -10,10 +10,13 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-
-class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : DeliveryQueue {
+private data class Lease (
+    val token: UUID,
+    val expiresAt: Instant,
+)
+class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC(), private val lease: Duration) : DeliveryQueue {
     private val deliveries = mutableMapOf<String, Delivery>()
-    private val deliveryClaimTokens = mutableMapOf<String, UUID>()
+    private val deliveryClaimTokens = mutableMapOf<String, Lease>()
 
     // block concurrent modification/access to deliveries (shared state)
     private val mutex = Mutex()
@@ -46,6 +49,7 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         val now = Instant.now(clock)
         val claimToken = UUID.randomUUID()
         mutex.withLock {
+            val expiration = now.plus(lease)
             val list = deliveries.values
             val claimable = list.filter {
                 it.nextAttemptAt <= now && it.status == DeliveryStatus.PENDING
@@ -54,7 +58,7 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
             // change status
             val newDelivery = earliest.copy(status = DeliveryStatus.IN_FLIGHT, attempts = earliest.attempts + 1)
             deliveries[newDelivery.id] = newDelivery
-            deliveryClaimTokens[newDelivery.id] = claimToken
+            deliveryClaimTokens[newDelivery.id] = Lease(claimToken, expiration)
             return Claim(delivery = newDelivery, token = claimToken)
         }
     }
@@ -65,7 +69,7 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         val attempt = delivery.attempts
         val nextStatus = DeliveryStatus.SUCCEEDED
         val newDelivery = delivery.copy(status = nextStatus)
-        deliveryClaimTokens.remove(deliveryId, claim.token)
+        deliveryClaimTokens.remove(deliveryId)
         deliveries[deliveryId] = newDelivery
     }
 
@@ -79,8 +83,26 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         val nextAttemptAt = now.plus(Duration.ofSeconds(nextSeconds))
         val newDelivery =
             delivery.copy(status = nextStatus, nextAttemptAt = nextAttemptAt, attempts = attempt, lastError = error)
-        deliveryClaimTokens.remove(deliveryId, claim.token)
+        deliveryClaimTokens.remove(deliveryId)
         deliveries[deliveryId] = newDelivery
+    }
+
+    override suspend fun reapExpired(): Int = mutex.withLock {
+        val expired = deliveries.values.filter {
+            val lease = deliveryClaimTokens[it.id]
+            it.status == DeliveryStatus.IN_FLIGHT &&
+                         lease != null &&
+                         lease.expiresAt <= Instant.now(clock)
+        }
+        val newDeliveries = expired.map {
+            val status = if(it.attempts >= MAX_ATTEMPTS) DeliveryStatus.DEAD else DeliveryStatus.PENDING
+            it.copy(status = status, lastError = "lease expired")
+        }
+        for (delivery in newDeliveries) {
+            deliveries[delivery.id] = delivery
+            deliveryClaimTokens.remove(delivery.id)
+        }
+        return newDeliveries.size
     }
 
     override suspend fun find(id: String): Delivery? = mutex.withLock {
