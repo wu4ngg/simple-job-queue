@@ -22,6 +22,10 @@ data class Delivery(
     val endpointId: String,
     val payload: String,
     val status: DeliveryStatus = DeliveryStatus.PENDING,
+    /**
+     * Number of delivery attempts started, IN_FLIGHT deliveries included
+     * Starts at 0 and incremented when the delivery is claimed, NOT in markSucceeded and markFailed
+     */
     val attempts: Int = 0,
     val nextAttemptAt: Instant,
     val lastError: String? = null,

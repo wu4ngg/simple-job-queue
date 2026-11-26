@@ -27,8 +27,7 @@ class DeliveryWorker(
     suspend fun processNext(): Boolean {
         val claim = queue.claimNext() ?: return false
         val delivery = claim.delivery
-        val attemptCount = delivery.attempts + 1
-        log.info("worker ${instanceId.take(8)} --> claiming ${delivery.endpointId}: (id: ${delivery.id}, attempt #${attemptCount})")
+        log.info("worker ${instanceId.take(8)} --> claiming ${delivery.endpointId}: (id: ${delivery.id}, attempt #${delivery.attempts})")
         val endpoint = endpoints.get(delivery.endpointId)
         if (endpoint == null) {
             queue.markFailed(claim, "Endpoint not found")
@@ -39,7 +38,7 @@ class DeliveryWorker(
                 contentType(ContentType.Application.Json)
                 setBody(delivery.payload)
                 header("X-Delivery-Id", delivery.id)
-                header("X-Delivery-Attempt", attemptCount)
+                header("X-Delivery-Attempt", delivery.attempts)
             }
         } catch (ex: CancellationException) {
             throw ex

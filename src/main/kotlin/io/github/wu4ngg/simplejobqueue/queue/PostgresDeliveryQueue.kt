@@ -64,7 +64,10 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
     override suspend fun claimNext(): Claim? {
         val claimToken = UUID.randomUUID()
         val sql = """
-            UPDATE deliveries SET status = '${DeliveryStatus.IN_FLIGHT.toCode()}', claim_token = ? 
+            UPDATE deliveries SET 
+                status = '${DeliveryStatus.IN_FLIGHT.toCode()}', 
+                claim_token = ?, 
+                attempts = attempts + 1
             WHERE id = (
                 SELECT id FROM deliveries
                 WHERE status = '${DeliveryStatus.PENDING.toCode()}' AND next_attempt_at <= now()
@@ -77,7 +80,6 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
             conn.prepareStatement(sql).use { ps ->
                 ps.setObject(1, claimToken)
                 ps.executeQuery().use { rs ->
-
                     if (rs.next()) {
                         rs.toDelivery()
                     } else null
@@ -91,7 +93,7 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
         val uuid = UUID.fromString(claim.delivery.id)
         val sql = """
             UPDATE deliveries
-            SET status = '${DeliveryStatus.SUCCEEDED.toCode()}', attempts = attempts + 1
+            SET status = '${DeliveryStatus.SUCCEEDED.toCode()}'
             WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ?
         """.trimIndent()
         val updated = ds.withConnection { conn ->
@@ -107,12 +109,11 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
         val uuid = UUID.fromString(claim.delivery.id)
         val sql = """
             UPDATE deliveries
-            SET attempts        = attempts + 1,
-                status          = CASE WHEN attempts + 1 >= ?
+            SET status          = CASE WHEN attempts >= ?
                                   THEN '${DeliveryStatus.DEAD.toCode()}'
                                   ELSE '${DeliveryStatus.PENDING.toCode()}'
                                   END,
-                next_attempt_at = now() + make_interval(secs => power(2, attempts + 1)),
+                next_attempt_at = now() + make_interval(secs => power(2, attempts)),
                 last_error      = ?
             WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ?
         """.trimIndent()

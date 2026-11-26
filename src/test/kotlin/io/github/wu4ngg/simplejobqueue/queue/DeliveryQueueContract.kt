@@ -164,4 +164,23 @@ abstract class DeliveryQueueContract {
         )
         assertEquals(listOf(claimed.delivery.id), inFlightList.map { it.id })
     }
+
+    @Test
+    fun `attempts counts the claim in flight`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        val delivery = queue.enqueue(endpoint, """{"1": 1}""")
+        val claimed = queue.claimNext()
+        assertNotNull(claimed)
+        assertEquals(1, claimed.delivery.attempts)
+        queue.markFailed(claimed, "HTTP 500")
+        advanceTime(Duration.ofSeconds(2))
+        val claimed2 = queue.claimNext()
+        assertNotNull(claimed2)
+        assertEquals(delivery.id, claimed2.delivery.id)
+        assertEquals(2, claimed2.delivery.attempts)
+        queue.markSucceeded(claimed2)
+        val final = queue.find(delivery.id)
+        assertNotNull(final)
+        assertEquals(2, final.attempts)
+    }
 }
