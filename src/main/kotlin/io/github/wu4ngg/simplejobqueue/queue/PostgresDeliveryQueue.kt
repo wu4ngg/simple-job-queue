@@ -2,6 +2,7 @@ package io.github.wu4ngg.simplejobqueue.queue
 
 import io.github.wu4ngg.simplejobqueue.db.withConnection
 import io.github.wu4ngg.simplejobqueue.endpoints.EndpointNotFoundException
+import io.github.wu4ngg.simplejobqueue.models.Claim
 import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
 import io.github.wu4ngg.simplejobqueue.models.MAX_ATTEMPTS
@@ -60,9 +61,11 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
         }
     }
 
-    override suspend fun claimNext(): Delivery? {
+    override suspend fun claimNext(): Claim? {
+        val claimToken = UUID.randomUUID()
         val sql = """
-            UPDATE deliveries SET status = '${DeliveryStatus.IN_FLIGHT.toCode()}' WHERE id = (
+            UPDATE deliveries SET status = '${DeliveryStatus.IN_FLIGHT.toCode()}', claim_token = ? 
+            WHERE id = (
                 SELECT id FROM deliveries
                 WHERE status = '${DeliveryStatus.PENDING.toCode()}' AND next_attempt_at <= now()
                 ORDER BY next_attempt_at ASC
@@ -70,19 +73,22 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
                 FOR UPDATE SKIP LOCKED
             ) RETURNING $DELIVERY_COLUMNS
         """.trimIndent()
-        return ds.withConnection { conn ->
+        val res = ds.withConnection { conn ->
             conn.prepareStatement(sql).use { ps ->
+                ps.setObject(1, claimToken)
                 ps.executeQuery().use { rs ->
+
                     if (rs.next()) {
                         rs.toDelivery()
                     } else null
                 }
             }
         }
+        return res?.let { Claim(it, claimToken) }
     }
 
-    override suspend fun markSucceeded(id: String) {
-        val uuid = UUID.fromString(id)
+    override suspend fun markSucceeded(claim: Claim) {
+        val uuid = UUID.fromString(claim.delivery.id)
         val sql = """
             UPDATE deliveries
             SET status = '${DeliveryStatus.SUCCEEDED.toCode()}', attempts = attempts + 1
@@ -94,11 +100,11 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
                 ps.executeUpdate()
             }
         }
-        check(updated == 1) { "Delivery '$id' is not inflight" }
+        check(updated == 1) { "Delivery '${uuid}' is not inflight" }
     }
 
-    override suspend fun markFailed(id: String, error: String) {
-        val uuid = UUID.fromString(id)
+    override suspend fun markFailed(claim: Claim, error: String) {
+        val uuid = UUID.fromString(claim.delivery.id)
         val sql = """
             UPDATE deliveries
             SET attempts        = attempts + 1,
@@ -118,7 +124,7 @@ class PostgresDeliveryQueue(private val ds: DataSource) : DeliveryQueue {
                 ps.executeUpdate()
             }
         }
-        check(updated == 1) { "Delivery '$id' is not inflight" }
+        check(updated == 1) { "Delivery '$uuid' is not inflight" }
     }
 
     override suspend fun find(id: String): Delivery? {

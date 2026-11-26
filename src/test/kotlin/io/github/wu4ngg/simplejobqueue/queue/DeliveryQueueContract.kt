@@ -1,5 +1,6 @@
 package io.github.wu4ngg.simplejobqueue.queue
 
+import io.github.wu4ngg.simplejobqueue.models.Claim
 import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
 import io.github.wu4ngg.simplejobqueue.models.MAX_ATTEMPTS
@@ -47,7 +48,8 @@ abstract class DeliveryQueueContract {
             async(Dispatchers.Default) {
                 val resList = mutableListOf<String>()
                 while (true) {
-                    val res = queue.claimNext() ?: break
+                    val claim = queue.claimNext() ?: break
+                    val res = claim.delivery
                     resList.add(res.id)
                 }
                 resList
@@ -70,10 +72,10 @@ abstract class DeliveryQueueContract {
             "{}"
         )
         assertFailsWith<IllegalStateException> {
-            queue.markSucceeded(del.id)
+            queue.markSucceeded(Claim(del, UUID.randomUUID()))
         }
         assertFailsWith<IllegalStateException> {
-            queue.markSucceeded(UUID.randomUUID().toString())
+            queue.markSucceeded(Claim(del.copy(id = UUID.randomUUID().toString()), UUID.randomUUID()))
         }
     }
 
@@ -85,9 +87,9 @@ abstract class DeliveryQueueContract {
         )
         val claimed = queue.claimNext()
         assertNotNull(claimed)
-        assertEquals(del.id, claimed.id)
+        assertEquals(del.id, claimed.delivery.id)
         val before = now()
-        queue.markFailed(del.id, "HTTP 500")
+        queue.markFailed(claimed, "HTTP 500")
         val after = now()
         val failed = queue.find(del.id)
         assertNotNull(failed)
@@ -104,7 +106,7 @@ abstract class DeliveryQueueContract {
         assertNull(claimed1s)
         advanceTime(Duration.ofSeconds(1))
         val claimed2s = queue.claimNext()
-        assertEquals(claimed.id, claimed2s?.id)
+        assertEquals(claimed.delivery.id, claimed2s?.delivery?.id)
     }
 
     @Test
@@ -116,9 +118,9 @@ abstract class DeliveryQueueContract {
         repeat(MAX_ATTEMPTS) {
             val deliveryClaimNext = queue.claimNext()
             assertNotNull(deliveryClaimNext, "Expected delivery after claimNext")
-            assertEquals(delivery.id, deliveryClaimNext.id)
-            assertEquals(DeliveryStatus.IN_FLIGHT, deliveryClaimNext.status)
-            queue.markFailed(deliveryClaimNext.id, "HTTP 500 $it")
+            assertEquals(delivery.id, deliveryClaimNext.delivery.id)
+            assertEquals(DeliveryStatus.IN_FLIGHT, deliveryClaimNext.delivery.status)
+            queue.markFailed(deliveryClaimNext, "HTTP 500 $it")
             advanceTime(Duration.ofMinutes(1))
         }
         val failed = queue.find(delivery.id)
@@ -157,9 +159,9 @@ abstract class DeliveryQueueContract {
         val inFlightList = queue.list(DeliveryStatus.IN_FLIGHT)
         assertEquals(setOf(d1.id, d2.id, d3.id), list.map { it.id }.toSet())
         assertEquals(
-            setOf(d1.id, d2.id, d3.id) - claimed.id,
+            setOf(d1.id, d2.id, d3.id) - claimed.delivery.id,
             pendingList.map { it.id }.toSet(),
         )
-        assertEquals(listOf(claimed.id), inFlightList.map { it.id })
+        assertEquals(listOf(claimed.delivery.id), inFlightList.map { it.id })
     }
 }

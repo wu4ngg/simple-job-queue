@@ -1,5 +1,6 @@
 package io.github.wu4ngg.simplejobqueue.queue
 
+import io.github.wu4ngg.simplejobqueue.models.Claim
 import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
 import io.github.wu4ngg.simplejobqueue.models.MAX_ATTEMPTS
@@ -12,7 +13,7 @@ import java.util.UUID
 
 class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : DeliveryQueue {
     private val deliveries = mutableMapOf<String, Delivery>()
-
+    private val deliveryClaimTokens = mutableMapOf<String, UUID>()
 
     // block concurrent modification/access to deliveries (shared state)
     private val mutex = Mutex()
@@ -41,8 +42,9 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
         return delivery
     }
 
-    override suspend fun claimNext(): Delivery? {
+    override suspend fun claimNext(): Claim? {
         val now = Instant.now(clock)
+        val claimToken = UUID.randomUUID()
         mutex.withLock {
             val list = deliveries.values
             val claimable = list.filter {
@@ -52,29 +54,33 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC()) : Deli
             // change status
             val newDelivery = earliest.copy(status = DeliveryStatus.IN_FLIGHT)
             deliveries[newDelivery.id] = newDelivery
-            return newDelivery
+            deliveryClaimTokens[newDelivery.id] = claimToken
+            return Claim(delivery = newDelivery, token = claimToken)
         }
     }
 
-    override suspend fun markSucceeded(id: String) = mutex.withLock {
-        val delivery = requireInflight(id)
+    override suspend fun markSucceeded(claim: Claim) = mutex.withLock {
+        val deliveryId = claim.delivery.id
+        val delivery = requireInflight(deliveryId)
         val nextAttempt = delivery.attempts + 1
         val nextStatus = DeliveryStatus.SUCCEEDED
         val newDelivery = delivery.copy(status = nextStatus, attempts = nextAttempt)
-        deliveries[id] = newDelivery
+        deliveryClaimTokens.remove(deliveryId, claim.token)
+        deliveries[deliveryId] = newDelivery
     }
 
-    override suspend fun markFailed(id: String, error: String) = mutex.withLock {
+    override suspend fun markFailed(claim: Claim, error: String) = mutex.withLock {
+        val deliveryId = claim.delivery.id
         val now = Instant.now(clock)
-        val delivery = requireInflight(id)
+        val delivery = requireInflight(deliveryId)
         val nextAttempt = delivery.attempts + 1
         val nextStatus = if (nextAttempt >= MAX_ATTEMPTS) DeliveryStatus.DEAD else DeliveryStatus.PENDING
         val nextSeconds = 1L shl nextAttempt
         val nextAttemptAt = now.plus(Duration.ofSeconds(nextSeconds))
         val newDelivery =
             delivery.copy(status = nextStatus, nextAttemptAt = nextAttemptAt, attempts = nextAttempt, lastError = error)
-        deliveries[id] = newDelivery
-
+        deliveryClaimTokens.remove(deliveryId, claim.token)
+        deliveries[deliveryId] = newDelivery
     }
 
     override suspend fun find(id: String): Delivery? = mutex.withLock {

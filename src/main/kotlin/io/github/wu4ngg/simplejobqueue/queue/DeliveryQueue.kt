@@ -1,13 +1,14 @@
 package io.github.wu4ngg.simplejobqueue.queue
 
+import io.github.wu4ngg.simplejobqueue.models.Claim
 import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
 
 interface DeliveryQueue {
     suspend fun enqueue(endpointId: String, payload: String): Delivery
-    suspend fun claimNext(): Delivery?
-    suspend fun markSucceeded(id: String)
-    suspend fun markFailed(id: String, error: String)
+    suspend fun claimNext(): Claim?
+    suspend fun markSucceeded(claim: Claim)
+    suspend fun markFailed(claim: Claim, error: String)
 
     /**
      * id must be a valid UUID; implementations may throw otherwise

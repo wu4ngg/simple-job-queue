@@ -1,6 +1,7 @@
 package io.github.wu4ngg.simplejobqueue.models
 
 import java.time.Instant
+import java.util.UUID
 
 const val MAX_ATTEMPTS = 5
 
@@ -24,7 +25,12 @@ data class Delivery(
     val attempts: Int = 0,
     val nextAttemptAt: Instant,
     val lastError: String? = null,
-    val createdAt: Instant
+    val createdAt: Instant,
+)
+
+data class Claim(
+    val delivery: Delivery,
+    val token: UUID,
 )
 
 /**

@@ -3,6 +3,7 @@ package io.github.wu4ngg.simplejobqueue.queue
 import io.github.wu4ngg.simplejobqueue.db.TestDatabase
 import io.github.wu4ngg.simplejobqueue.endpoints.EndpointNotFoundException
 import io.github.wu4ngg.simplejobqueue.endpoints.PostgresEndpointRepository
+import io.github.wu4ngg.simplejobqueue.models.Claim
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
 import io.github.wu4ngg.simplejobqueue.models.toCode
 import kotlinx.coroutines.runBlocking
@@ -75,17 +76,18 @@ class PostgresDeliveryQueueTest {
         val endpointRepo = PostgresEndpointRepository(TestDatabase.ds)
         val endpoint = endpointRepo.create("http://localhost:8080/test-receiver")
         val queue = PostgresDeliveryQueue(TestDatabase.ds)
+        val realDelivery = queue.enqueue(endpointId = endpoint.id, payload = "{\"a\":\"0\"}")
         assertFailsWith<IllegalArgumentException> {
             queue.find("nope")
         }
         assertFailsWith<IllegalArgumentException> {
-            queue.markSucceeded("nope")
+            queue.markSucceeded(Claim(realDelivery.copy(id = "nope"), UUID.randomUUID()))
         }
         assertFailsWith<IllegalArgumentException> {
             queue.enqueue("nope", "{}")
         }
         assertFailsWith<IllegalArgumentException> {
-            queue.markFailed("nope", "npe")
+            queue.markFailed(Claim(realDelivery.copy(id = "nope"), UUID.randomUUID()), "nope")
         }
     }
 }

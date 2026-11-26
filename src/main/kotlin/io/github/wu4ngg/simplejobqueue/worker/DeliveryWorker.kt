@@ -25,12 +25,13 @@ class DeliveryWorker(
 ) {
     private val log = LoggerFactory.getLogger(DeliveryWorker::class.java)
     suspend fun processNext(): Boolean {
-        val delivery = queue.claimNext() ?: return false
+        val claim = queue.claimNext() ?: return false
+        val delivery = claim.delivery
         val attemptCount = delivery.attempts + 1
         log.info("worker ${instanceId.take(8)} --> claiming ${delivery.endpointId}: (id: ${delivery.id}, attempt #${attemptCount})")
         val endpoint = endpoints.get(delivery.endpointId)
         if (endpoint == null) {
-            queue.markFailed(delivery.id, "Endpoint not found")
+            queue.markFailed(claim, "Endpoint not found")
             return true
         }
         val result: HttpResponse = try {
@@ -43,13 +44,13 @@ class DeliveryWorker(
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {
-            queue.markFailed(delivery.id, "${ex::class.simpleName}: ${ex.message}")
+            queue.markFailed(claim, "${ex::class.simpleName}: ${ex.message}")
             return true
         }
         if (result.status.isSuccess()) {
-            queue.markSucceeded(delivery.id)
+            queue.markSucceeded(claim)
         } else {
-            queue.markFailed(delivery.id, "HTTP ${result.status.value}")
+            queue.markFailed(claim, "HTTP ${result.status.value}")
         }
         return true
     }
