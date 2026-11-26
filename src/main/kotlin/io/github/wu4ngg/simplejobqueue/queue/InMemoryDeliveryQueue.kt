@@ -16,17 +16,16 @@ private data class Lease (
 )
 class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC(), private val lease: Duration) : DeliveryQueue {
     private val deliveries = mutableMapOf<String, Delivery>()
-    private val deliveryClaimTokens = mutableMapOf<String, Lease>()
+    private val leases = mutableMapOf<String, Lease>()
 
     // block concurrent modification/access to deliveries (shared state)
     private val mutex = Mutex()
 
     // caller must hold mutex
-    private fun requireInflight(id: String): Delivery {
-        val delivery = deliveries[id]
-        checkNotNull(delivery) { "Delivery not found: $id" }
-        check(delivery.status == DeliveryStatus.IN_FLIGHT) { "Invalid delivery status: $id" }
-        return delivery
+    private fun ownedBy(claim: Claim): Delivery? {
+        val delivery = deliveries[claim.delivery.id] ?: return null
+        val lease = leases[delivery.id] ?: return null
+        return delivery.takeIf { it.status == DeliveryStatus.IN_FLIGHT && lease.token == claim.token }
     }
 
     override suspend fun enqueue(endpointId: String, payload: String): Delivery {
@@ -58,38 +57,40 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC(), privat
             // change status
             val newDelivery = earliest.copy(status = DeliveryStatus.IN_FLIGHT, attempts = earliest.attempts + 1)
             deliveries[newDelivery.id] = newDelivery
-            deliveryClaimTokens[newDelivery.id] = Lease(claimToken, expiration)
+            leases[newDelivery.id] = Lease(claimToken, expiration)
             return Claim(delivery = newDelivery, token = claimToken)
         }
     }
 
-    override suspend fun markSucceeded(claim: Claim) = mutex.withLock {
+    override suspend fun markSucceeded(claim: Claim): Boolean = mutex.withLock {
         val deliveryId = claim.delivery.id
-        val delivery = requireInflight(deliveryId)
+        val delivery = ownedBy(claim) ?: return false
         val attempt = delivery.attempts
         val nextStatus = DeliveryStatus.SUCCEEDED
         val newDelivery = delivery.copy(status = nextStatus)
-        deliveryClaimTokens.remove(deliveryId)
+        leases.remove(deliveryId)
         deliveries[deliveryId] = newDelivery
+        return true
     }
 
-    override suspend fun markFailed(claim: Claim, error: String) = mutex.withLock {
+    override suspend fun markFailed(claim: Claim, error: String): Boolean = mutex.withLock {
         val deliveryId = claim.delivery.id
         val now = Instant.now(clock)
-        val delivery = requireInflight(deliveryId)
+        val delivery = ownedBy(claim) ?: return false
         val attempt = delivery.attempts
         val nextStatus = if (attempt >= MAX_ATTEMPTS) DeliveryStatus.DEAD else DeliveryStatus.PENDING
         val nextSeconds = 1L shl attempt
         val nextAttemptAt = now.plus(Duration.ofSeconds(nextSeconds))
         val newDelivery =
             delivery.copy(status = nextStatus, nextAttemptAt = nextAttemptAt, attempts = attempt, lastError = error)
-        deliveryClaimTokens.remove(deliveryId)
+        leases.remove(deliveryId)
         deliveries[deliveryId] = newDelivery
+        return true
     }
 
     override suspend fun reapExpired(): Int = mutex.withLock {
         val expired = deliveries.values.filter {
-            val lease = deliveryClaimTokens[it.id]
+            val lease = leases[it.id]
             it.status == DeliveryStatus.IN_FLIGHT &&
                          lease != null &&
                          lease.expiresAt <= Instant.now(clock)
@@ -100,7 +101,7 @@ class InMemoryDeliveryQueue(private val clock: Clock = Clock.systemUTC(), privat
         }
         for (delivery in newDeliveries) {
             deliveries[delivery.id] = delivery
-            deliveryClaimTokens.remove(delivery.id)
+            leases.remove(delivery.id)
         }
         return newDeliveries.size
     }

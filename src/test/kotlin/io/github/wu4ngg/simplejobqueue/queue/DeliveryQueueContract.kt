@@ -1,7 +1,6 @@
 package io.github.wu4ngg.simplejobqueue.queue
 
 import io.github.wu4ngg.simplejobqueue.models.Claim
-import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.models.DeliveryStatus
 import io.github.wu4ngg.simplejobqueue.models.MAX_ATTEMPTS
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +13,7 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -67,17 +66,15 @@ abstract class DeliveryQueueContract {
     }
 
     @Test
-    fun `markSucceeded throws on an unclaimed or unknown delivery`(): Unit = runBlocking {
+    fun `mark returns false for a delivery that is not claimed`(): Unit = runBlocking {
         val del = queue.enqueue(
             createEndpoint(),
             "{}"
         )
-        assertFailsWith<IllegalStateException> {
-            queue.markSucceeded(Claim(del, UUID.randomUUID()))
-        }
-        assertFailsWith<IllegalStateException> {
+        assertFalse(queue.markSucceeded(Claim(del, UUID.randomUUID())))
+        assertFalse(
             queue.markSucceeded(Claim(del.copy(id = UUID.randomUUID().toString()), UUID.randomUUID()))
-        }
+        )
     }
 
     @Test
@@ -221,7 +218,7 @@ abstract class DeliveryQueueContract {
     fun `reapExpired put delivery status to DEAD after MAX_ATTEMPTS attempts`(): Unit = runBlocking {
         val endpoint = createEndpoint()
         val delivery = queue.enqueue(endpoint, """{"n": "0"}""")
-        repeat (MAX_ATTEMPTS) {
+        repeat(MAX_ATTEMPTS) {
             val claimed = queue.claimNext()
             assertNotNull(claimed)
             advanceTime(lease)
@@ -234,5 +231,77 @@ abstract class DeliveryQueueContract {
         assertEquals(DeliveryStatus.DEAD, deliveryFinal.status)
         val claimed2 = queue.claimNext()
         assertNull(claimed2)
+    }
+
+    @Test
+    fun `stale claim cannot mark a delivery reclaimed by another worker`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        val delivery = queue.enqueue(endpoint, """{"1": 1}""")
+        val claimed = queue.claimNext()
+        assertNotNull(claimed)
+        advanceTime(lease)
+        queue.reapExpired()
+        val claimed2 = queue.claimNext()
+        assertNotNull(claimed2)
+        assertEquals(delivery.id, claimed2.delivery.id)
+        val res = queue.markFailed(claimed, "HTTP 500")
+        assertFalse(res)
+        val row = queue.find(delivery.id)
+        assertNotNull(row)
+        assertEquals(DeliveryStatus.IN_FLIGHT, row.status)
+        assertEquals(2, row.attempts)
+        val res2 = queue.markSucceeded(claimed2)
+        assertTrue(res2)
+        val rowFinal = queue.find(delivery.id)
+        assertNotNull(rowFinal)
+        assertEquals(DeliveryStatus.SUCCEEDED, rowFinal.status)
+        val claimed3 = queue.claimNext()
+        assertNull(claimed3)
+    }
+
+    @Test
+    fun `mark with a forged token returns false and leaves the delivery untouched`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        val delivery = queue.enqueue(endpoint, """{"1": 1}""")
+        val claimed = queue.claimNext()
+        assertNotNull(claimed)
+        val claimed2 = Claim(delivery, UUID.randomUUID())
+        val res = queue.markSucceeded(claimed2)
+        assertFalse(res)
+        val row1 = queue.find(delivery.id)
+        assertNotNull(row1)
+        assertEquals(DeliveryStatus.IN_FLIGHT, row1.status)
+        assertEquals(1, row1.attempts)
+        val res1 = queue.markFailed(claimed2, "HTTP 500")
+        assertFalse(res1)
+        val row2 = queue.find(delivery.id)
+        assertNotNull(row2)
+        assertEquals(DeliveryStatus.IN_FLIGHT, row2.status)
+        assertEquals(1, row2.attempts)
+        val resReal = queue.markSucceeded(claimed)
+        assertTrue(resReal)
+        val rowReal = queue.find(delivery.id)
+        assertNotNull(rowReal)
+        assertEquals(DeliveryStatus.SUCCEEDED, rowReal.status)
+        assertEquals(1, rowReal.attempts)
+    }
+
+    @Test
+    fun `second mark of the same claim returns false`(): Unit = runBlocking {
+        val endpoint = createEndpoint()
+        queue.enqueue(endpoint, """{"1": 1}""")
+        val claimed = queue.claimNext()
+        assertNotNull(claimed)
+        val markSuccess1 = queue.markSucceeded(claimed)
+        val markSuccess2 = queue.markSucceeded(claimed)
+        assertTrue(markSuccess1)
+        assertFalse(markSuccess2)
+        queue.enqueue(endpoint, """{"1": 1}""")
+        val claimed1 = queue.claimNext()
+        assertNotNull(claimed1)
+        val markFail1 = queue.markFailed(claimed1, "FAILED")
+        val markFail2 = queue.markFailed(claimed1, "FAILED")
+        assertTrue(markFail1)
+        assertFalse(markFail2)
     }
 }

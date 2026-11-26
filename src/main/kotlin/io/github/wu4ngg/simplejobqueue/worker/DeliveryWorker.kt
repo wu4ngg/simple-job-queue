@@ -1,5 +1,6 @@
 package io.github.wu4ngg.simplejobqueue.worker
 
+import io.github.wu4ngg.simplejobqueue.models.Delivery
 import io.github.wu4ngg.simplejobqueue.queue.DeliveryQueue
 import io.github.wu4ngg.simplejobqueue.repositories.EndpointRepository
 import io.ktor.client.HttpClient
@@ -24,13 +25,24 @@ class DeliveryWorker(
     private val instanceId: String,
 ) {
     private val log = LoggerFactory.getLogger(DeliveryWorker::class.java)
+    private fun warnIfLost(applied: Boolean, delivery: Delivery) {
+        if (!applied) log.warn(
+            "worker --> lost lease: instance ${
+                instanceId.take(
+                    8
+                )
+            }, delivery ${delivery.id}, attempt ${delivery.attempts}"
+        )
+    }
+
     suspend fun processNext(): Boolean {
         val claim = queue.claimNext() ?: return false
         val delivery = claim.delivery
         log.info("worker ${instanceId.take(8)} --> claiming ${delivery.endpointId}: (id: ${delivery.id}, attempt #${delivery.attempts})")
         val endpoint = endpoints.get(delivery.endpointId)
         if (endpoint == null) {
-            queue.markFailed(claim, "Endpoint not found")
+            val res = queue.markFailed(claim, "Endpoint not found")
+            warnIfLost(res, delivery)
             return true
         }
         val result: HttpResponse = try {
@@ -43,13 +55,16 @@ class DeliveryWorker(
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {
-            queue.markFailed(claim, "${ex::class.simpleName}: ${ex.message}")
+            val res = queue.markFailed(claim, "${ex::class.simpleName}: ${ex.message}")
+            warnIfLost(res, delivery)
             return true
         }
         if (result.status.isSuccess()) {
-            queue.markSucceeded(claim)
+            val res = queue.markSucceeded(claim)
+            warnIfLost(res, delivery)
         } else {
-            queue.markFailed(claim, "HTTP ${result.status.value}")
+            val res = queue.markFailed(claim, "HTTP ${result.status.value}")
+            warnIfLost(res, delivery)
         }
         return true
     }
@@ -63,7 +78,7 @@ class DeliveryWorker(
                     val process = processNext()
                     if (!process) {
                         val rows = queue.reapExpired()
-                        if(rows > 0) {
+                        if (rows > 0) {
                             log.warn("worker ${instanceId.take(8)} --> Reaping $rows inflight deliveries.")
                         }
                     }

@@ -92,25 +92,26 @@ class PostgresDeliveryQueue(private val ds: DataSource, private val lease: Durat
         return res?.let { Claim(it, claimToken) }
     }
 
-    override suspend fun markSucceeded(claim: Claim) {
+    override suspend fun markSucceeded(claim: Claim): Boolean {
         val uuid = UUID.fromString(claim.delivery.id)
         val sql = """
             UPDATE deliveries
             SET status           = '${DeliveryStatus.SUCCEEDED.toCode()}',                 
                 claim_token      = NULL,
                 lease_expires_at = NULL
-            WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ?
+            WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ? AND claim_token = ?
         """.trimIndent()
         val updated = ds.withConnection { conn ->
             conn.prepareStatement(sql).use { ps ->
                 ps.setObject(1, uuid)
+                ps.setObject(2, claim.token)
                 ps.executeUpdate()
             }
         }
-        check(updated == 1) { "Delivery '${uuid}' is not inflight" }
+        return updated == 1
     }
 
-    override suspend fun markFailed(claim: Claim, error: String) {
+    override suspend fun markFailed(claim: Claim, error: String): Boolean {
         val uuid = UUID.fromString(claim.delivery.id)
         val sql = """
             UPDATE deliveries
@@ -122,17 +123,18 @@ class PostgresDeliveryQueue(private val ds: DataSource, private val lease: Durat
                 claim_token      = NULL,
                 lease_expires_at = NULL,
                 last_error       = ?
-            WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ?
+            WHERE status = '${DeliveryStatus.IN_FLIGHT.toCode()}' AND id = ? AND claim_token = ?
         """.trimIndent()
         val updated = ds.withConnection { conn ->
             conn.prepareStatement(sql).use { ps ->
                 ps.setInt(1, MAX_ATTEMPTS)
                 ps.setString(2, error)
                 ps.setObject(3, uuid)
+                ps.setObject(4, claim.token)
                 ps.executeUpdate()
             }
         }
-        check(updated == 1) { "Delivery '$uuid' is not inflight" }
+        return updated == 1
     }
 
     override suspend fun reapExpired(): Int {
