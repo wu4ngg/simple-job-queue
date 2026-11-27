@@ -80,6 +80,12 @@ async function invoke(
           const __result = await __parent.build()
           return await (__result).id()
         }
+
+        case "test": {
+          const __parent = rebuildSimpleJobQueue(parentJson)
+          const __result = await __parent.test()
+          return __result
+        }
         default:
           throw new Error(`unknown function ${fnName} on SimpleJobQueue`)
       }

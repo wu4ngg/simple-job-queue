@@ -36,7 +36,12 @@ type Entrypoint implements ModuleEntrypoint {
         .withObject("SimpleJobQueue", sourceMap: sourceMap("src/index.ts", 7, 14))
         .withFunction(
           function("build", typeDef.withObject("File"))
-            .withSourceMap(sourceMap("src/index.ts", 32, 3)),
+            .withSourceMap(sourceMap("src/index.ts", 47, 3)),
+        )
+        .withFunction(
+          function("test", typeDef.withKind(TypeDefKind.VOID_KIND).withOptional(true))
+            .withSourceMap(sourceMap("src/index.ts", 40, 9))
+            .withCheck,
         )
         .withConstructor(
           function("", typeDef.withObject("SimpleJobQueue"))

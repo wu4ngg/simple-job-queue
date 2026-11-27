@@ -8,5 +8,6 @@
 ["","git-sha",["github.com/dagger/typescript-sdk","refs/tags/v1.3.0"],"aa3bf2689a8b12a6034b4f68251d18006507197e"]
 ["","oci-sha",["docker.io/library/eclipse-temurin:21.0.13.1_2-jdk-noble"],"sha256:5f9489c60984e9715afba8e7da353e9d78d2a38c0517662f5cc29fc8094efe1f"]
 ["","oci-sha",["docker.io/library/golang:1.25-alpine"],"sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59"]
+["","oci-sha",["docker.io/library/postgres:17.12"],"sha256:97fb53376be3e4fb1a8a61421daa69dcc3bf2fa39bda3259f5245f9a455af1a9"]
 ["","vanity-url",["https://dagger.io/sdk/helpers"],"https://github.com/dagger/sdk-helpers"]
 ["","vanity-url",["https://dagger.io/sdk/typescript"],"https://github.com/dagger/typescript-sdk"]
