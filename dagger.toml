@@ -1,0 +1,12 @@
+[modules.typescript-sdk]
+source = "dagger.io/sdk/typescript"
+
+[sdks.typescript]
+module = "typescript-sdk"
+
+[modules.simple-job-queue]
+source = ".dagger/modules/simple-job-queue"
+
+[sdks.typescript.scopes.".dagger/modules/simple-job-queue"]
+is-module = true
+name = "simple-job-queue"

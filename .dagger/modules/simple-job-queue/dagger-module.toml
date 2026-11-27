@@ -1,0 +1,5 @@
+name = "simple-job-queue"
+
+[entrypoint]
+kind = "dang"
+source = "./entrypoint"
