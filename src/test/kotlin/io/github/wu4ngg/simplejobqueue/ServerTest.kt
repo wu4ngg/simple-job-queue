@@ -21,9 +21,9 @@ class ServerTest {
         environment {
             config = ApplicationConfig("application.conf").mergeWith(
         MapApplicationConfig(
-                    "database.url" to TestDatabase.container.jdbcUrl,
-                    "database.user" to TestDatabase.container.username,
-                    "database.password" to TestDatabase.container.password,
+                    "database.url" to TestDatabase.dbUrl,
+                    "database.user" to TestDatabase.dbUsername,
+                    "database.password" to TestDatabase.dbPassword,
                 )
             )
         }
